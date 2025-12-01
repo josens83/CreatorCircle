@@ -1,0 +1,1042 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 사용자 시스템 ====================
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  emailVerified  DateTime?
+  username       String    @unique
+  name           String?
+  passwordHash   String?
+  avatar         String?
+  role           UserRole  @default(USER)
+
+  // Stripe
+  stripeCustomerId       String?
+  defaultPaymentMethod   String?
+
+  // 설정
+  settings       Json      @default("{}")
+
+  // 타임스탬프
+  lastActiveAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // 관계
+  accounts       Account[]
+  sessions       Session[]
+  creator        Creator?
+  memberships    Member[]
+  purchases      Purchase[]
+  comments       Comment[]
+  likes          Like[]
+  bookmarks      Bookmark[]
+  referrals      Referral[]
+  referralConversions ReferralConversion[] @relation("ReferredUser")
+  tipsGiven      Tip[]
+  newsletterSubscriptions NewsletterSubscriber[]
+  notifications  Notification[]
+
+  @@index([email])
+  @@index([username])
+}
+
+enum UserRole {
+  USER
+  CREATOR
+  ADMIN
+}
+
+// NextAuth.js 필수 모델
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== 크리에이터 시스템 ====================
+
+model Creator {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 프로필
+  name             String
+  username         String    @unique
+  bio              String?   @db.Text
+  avatar           String?
+  coverImage       String?
+
+  // 소셜 링크
+  links            Json      @default("{}")
+
+  // 검증
+  isVerified       Boolean   @default(false)
+  verifiedAt       DateTime?
+
+  // 통계
+  totalSubscribers Int       @default(0)
+  totalPosts       Int       @default(0)
+  totalRevenue     Decimal   @default(0) @db.Decimal(12, 2)
+
+  // Stripe Connect
+  stripeConnectId  String?
+  payoutEnabled    Boolean   @default(false)
+  pendingPayout    Decimal   @default(0) @db.Decimal(12, 2)
+
+  // 타임스탬프
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // 관계
+  circles          Circle[]
+  products         Product[]
+  tipsReceived     Tip[]
+  payouts          Payout[]
+
+  @@index([username])
+}
+
+// ==================== 서클 (커뮤니티) 시스템 ====================
+
+model Circle {
+  id              String         @id @default(cuid())
+  creatorId       String
+  creator         Creator        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  // 기본 정보
+  name            String
+  slug            String         @unique
+  tagline         String?
+  description     String?        @db.Text
+  coverImage      String?
+
+  // 유형
+  type            CircleType     @default(HYBRID)
+  category        CircleCategory
+  tags            String[]
+
+  // 가격
+  pricing         Json           // CirclePricing
+
+  // 설정
+  settings        Json           @default("{}")
+
+  // 통계
+  memberCount     Int            @default(0)
+  postCount       Int            @default(0)
+
+  // 상태
+  status          CircleStatus   @default(ACTIVE)
+  visibility      Visibility     @default(PUBLIC)
+
+  // 타임스탬프
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  // 관계
+  tiers           MembershipTier[]
+  members         Member[]
+  posts           Post[]
+  products        Product[]
+  referrals       Referral[]
+  affiliateProgram AffiliateProgram?
+  newsletterSubscribers NewsletterSubscriber[]
+  emailCampaigns  EmailCampaign[]
+  tips            Tip[]
+
+  @@index([creatorId])
+  @@index([category, status])
+  @@index([slug])
+}
+
+enum CircleType {
+  COMMUNITY
+  NEWSLETTER
+  HYBRID
+}
+
+enum CircleCategory {
+  TECH
+  BUSINESS
+  FINANCE
+  CAREER
+  MARKETING
+  DESIGN
+  WRITING
+  LIFESTYLE
+  EDUCATION
+  ENTERTAINMENT
+}
+
+enum CircleStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum Visibility {
+  PUBLIC
+  UNLISTED
+  PRIVATE
+}
+
+// ==================== 멤버십 티어 ====================
+
+model MembershipTier {
+  id              String   @id @default(cuid())
+  circleId        String
+  circle          Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?  @db.Text
+
+  // 가격
+  monthlyPrice    Int
+  yearlyPrice     Int?
+
+  // 혜택
+  benefits        String[]
+  accessLevel     Int      @default(1)
+
+  // 제한
+  memberLimit     Int?
+  currentMembers  Int      @default(0)
+
+  sortOrder       Int      @default(0)
+
+  // 타임스탬프
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 관계
+  members         Member[]
+  subscriptions   Subscription[]
+  posts           Post[]   @relation("TierRequiredPosts")
+
+  @@index([circleId])
+}
+
+// ==================== 멤버 ====================
+
+model Member {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  circleId        String
+  circle          Circle       @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  // 상태
+  status          MemberStatus @default(ACTIVE)
+
+  // 티어
+  tierId          String?
+  tier            MembershipTier? @relation(fields: [tierId], references: [id])
+  memberType      MemberType   @default(FREE)
+
+  // 활동
+  lastActiveAt    DateTime     @default(now())
+  postCount       Int          @default(0)
+  commentCount    Int          @default(0)
+
+  // 제휴
+  referredBy      String?
+  referrer        Member?      @relation("MemberReferrals", fields: [referredBy], references: [id])
+  referrals       Member[]     @relation("MemberReferrals")
+  referralCode    String?      @unique
+
+  // 타임스탬프
+  joinedAt        DateTime     @default(now())
+
+  // 관계
+  subscriptions   Subscription[]
+  posts           Post[]       @relation("MemberPosts")
+
+  @@unique([userId, circleId])
+  @@index([circleId, status])
+  @@index([userId])
+}
+
+enum MemberStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  BANNED
+}
+
+enum MemberType {
+  FREE
+  PAID
+  LIFETIME
+  GIFTED
+}
+
+// ==================== 구독 ====================
+
+model Subscription {
+  id                  String             @id @default(cuid())
+  memberId            String
+  member              Member             @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  circleId            String
+  userId              String
+
+  // 플랜
+  planType            PlanType
+  tierId              String?
+  tier                MembershipTier?    @relation(fields: [tierId], references: [id])
+
+  // 금액
+  amount              Int
+  currency            String             @default("KRW")
+
+  // 상태
+  status              SubscriptionStatus @default(ACTIVE)
+
+  // 기간
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+
+  // 취소
+  cancelledAt         DateTime?
+  cancelReason        String?
+
+  // Stripe
+  stripeSubscriptionId String?
+  stripeCustomerId    String?
+
+  // 제휴
+  referralId          String?
+  referral            Referral?          @relation(fields: [referralId], references: [id])
+  referralCommission  Int?
+
+  // 타임스탬프
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  // 관계
+  referralConversions ReferralConversion[]
+
+  @@index([userId, status])
+  @@index([circleId])
+}
+
+enum PlanType {
+  MONTHLY
+  YEARLY
+  LIFETIME
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+// ==================== 콘텐츠 시스템 ====================
+
+model Post {
+  id              String      @id @default(cuid())
+  circleId        String
+  circle          Circle      @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          Member      @relation("MemberPosts", fields: [authorId], references: [id])
+
+  // 콘텐츠
+  title           String
+  slug            String
+  content         String      @db.Text
+  excerpt         String?     @db.Text
+  coverImage      String?
+
+  // 타입
+  type            PostType    @default(ARTICLE)
+
+  // 접근
+  accessType      AccessType  @default(PAID)
+  requiredTierId  String?
+  requiredTier    MembershipTier? @relation("TierRequiredPosts", fields: [requiredTierId], references: [id])
+
+  // 미디어
+  attachments     Json        @default("[]")
+
+  // 뉴스레터
+  sendAsEmail     Boolean     @default(false)
+  emailSentAt     DateTime?
+  emailStats      Json?
+
+  // 통계
+  viewCount       Int         @default(0)
+  likeCount       Int         @default(0)
+  commentCount    Int         @default(0)
+  bookmarkCount   Int         @default(0)
+
+  // 상태
+  status          PostStatus  @default(DRAFT)
+  publishedAt     DateTime?
+  scheduledAt     DateTime?
+
+  // 고정
+  isPinned        Boolean     @default(false)
+
+  // SEO
+  seoTitle        String?
+  seoDescription  String?     @db.Text
+
+  // 타임스탬프
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // 관계
+  comments        Comment[]
+  likes           Like[]
+  bookmarks       Bookmark[]
+  poll            Poll?
+
+  @@unique([circleId, slug])
+  @@index([circleId, status, publishedAt])
+  @@index([authorId])
+}
+
+enum PostType {
+  ARTICLE
+  QUESTION
+  DISCUSSION
+  ANNOUNCEMENT
+  POLL
+}
+
+enum AccessType {
+  PUBLIC
+  FREE_MEMBERS
+  PAID
+  TIER
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+// 댓글
+model Comment {
+  id              String   @id @default(cuid())
+  postId          String
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User     @relation(fields: [authorId], references: [id])
+
+  content         String   @db.Text
+
+  // 대댓글
+  parentId        String?
+  parent          Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies         Comment[] @relation("CommentReplies")
+  replyCount      Int      @default(0)
+
+  likeCount       Int      @default(0)
+
+  // 상태
+  isCreatorReply  Boolean  @default(false)
+  isPinned        Boolean  @default(false)
+  isHidden        Boolean  @default(false)
+
+  // 타임스탬프
+  createdAt       DateTime @default(now())
+  editedAt        DateTime?
+
+  // 관계
+  likes           Like[]
+
+  @@index([postId])
+  @@index([authorId])
+}
+
+// 투표
+model Poll {
+  id              String       @id @default(cuid())
+  postId          String       @unique
+  post            Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  question        String
+  options         Json         // PollOption[]
+
+  allowMultiple   Boolean      @default(false)
+  endsAt          DateTime?
+
+  totalVotes      Int          @default(0)
+
+  createdAt       DateTime     @default(now())
+
+  // 관계
+  votes           PollVote[]
+}
+
+model PollVote {
+  id              String   @id @default(cuid())
+  pollId          String
+  poll            Poll     @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  userId          String
+  optionIndex     Int
+
+  createdAt       DateTime @default(now())
+
+  @@unique([pollId, userId])
+}
+
+// 좋아요
+model Like {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  postId          String?
+  post            Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  commentId       String?
+  comment         Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+}
+
+// 북마크
+model Bookmark {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId          String
+  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, postId])
+}
+
+// ==================== 디지털 상품 ====================
+
+model Product {
+  id              String        @id @default(cuid())
+  circleId        String
+  circle          Circle        @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  creatorId       String
+  creator         Creator       @relation(fields: [creatorId], references: [id])
+
+  name            String
+  description     String?       @db.Text
+  coverImage      String?
+
+  // 유형
+  type            ProductType
+
+  // 가격
+  price           Int
+  currency        String        @default("KRW")
+  comparePrice    Int?
+
+  // 콘텐츠
+  files           Json          @default("[]")
+
+  // 판매
+  salesCount      Int           @default(0)
+  revenue         Decimal       @default(0) @db.Decimal(12, 2)
+
+  // 상태
+  status          ProductStatus @default(ACTIVE)
+
+  // 타임스탬프
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // 관계
+  purchases       Purchase[]
+
+  @@index([circleId])
+  @@index([creatorId])
+}
+
+enum ProductType {
+  EBOOK
+  TEMPLATE
+  COURSE
+  RESOURCE
+  BUNDLE
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+model Purchase {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+
+  amount          Int
+  currency        String   @default("KRW")
+
+  // 다운로드
+  downloadCount   Int      @default(0)
+  lastDownloadAt  DateTime?
+
+  // 결제
+  paymentId       String?
+
+  purchasedAt     DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([userId])
+}
+
+// ==================== 제휴 시스템 ====================
+
+model AffiliateProgram {
+  circleId              String   @id
+  circle                Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  enabled               Boolean  @default(true)
+
+  // 커미션 설정
+  defaultCommissionRate Decimal  @default(0.30) @db.Decimal(3, 2)
+  commissionType        CommissionType @default(FIRST_PAYMENT)
+
+  // 쿠키 기간
+  cookieDuration        Int      @default(30)
+
+  // 최소 정산
+  minimumPayout         Int      @default(10000)
+
+  // 승인
+  requireApproval       Boolean  @default(false)
+
+  // 홍보 자료
+  marketingAssets       Json     @default("{}")
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+enum CommissionType {
+  FIRST_PAYMENT
+  RECURRING_12
+  LIFETIME
+}
+
+model Referral {
+  id              String         @id @default(cuid())
+  circleId        String
+  circle          Circle         @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  referrerId      String
+  referrer        User           @relation(fields: [referrerId], references: [id])
+
+  // 설정
+  code            String         @unique
+  customSlug      String?        @unique
+
+  // 커미션
+  commissionRate  Decimal        @default(0.30) @db.Decimal(3, 2)
+  commissionType  CommissionType @default(FIRST_PAYMENT)
+
+  // 통계
+  clicks          Int            @default(0)
+  signups         Int            @default(0)
+  conversions     Int            @default(0)
+
+  // 수익
+  totalEarnings   Decimal        @default(0) @db.Decimal(12, 2)
+  pendingEarnings Decimal        @default(0) @db.Decimal(12, 2)
+  paidEarnings    Decimal        @default(0) @db.Decimal(12, 2)
+
+  // 상태
+  status          ReferralStatus @default(ACTIVE)
+
+  // 타임스탬프
+  createdAt       DateTime       @default(now())
+
+  // 관계
+  subscriptions   Subscription[]
+  conversions_rel ReferralConversion[]
+
+  @@index([circleId])
+  @@index([referrerId])
+  @@index([code])
+}
+
+enum ReferralStatus {
+  ACTIVE
+  PAUSED
+  TERMINATED
+}
+
+model ReferralConversion {
+  id                  String   @id @default(cuid())
+  referralId          String
+  referral            Referral @relation(fields: [referralId], references: [id])
+  referrerId          String
+  referredUserId      String
+  referredUser        User     @relation("ReferredUser", fields: [referredUserId], references: [id])
+  subscriptionId      String
+  subscription        Subscription @relation(fields: [subscriptionId], references: [id])
+
+  // 금액
+  subscriptionAmount  Int
+  commissionAmount    Int
+  commissionRate      Decimal  @db.Decimal(3, 2)
+
+  // 상태
+  status              ConversionStatus @default(PENDING)
+
+  // 정산
+  paidAt              DateTime?
+  payoutId            String?
+  payout              Payout?  @relation(fields: [payoutId], references: [id])
+
+  createdAt           DateTime @default(now())
+
+  @@index([referralId])
+  @@index([referrerId])
+}
+
+enum ConversionStatus {
+  PENDING
+  APPROVED
+  PAID
+  REFUNDED
+}
+
+// ==================== 뉴스레터 시스템 ====================
+
+model NewsletterSubscriber {
+  id              String              @id @default(cuid())
+  circleId        String
+  circle          Circle              @relation(fields: [circleId], references: [id], onDelete: Cascade)
+
+  email           String
+  userId          String?
+  user            User?               @relation(fields: [userId], references: [id])
+
+  // 상태
+  status          SubscriberStatus    @default(ACTIVE)
+  source          SubscriberSource    @default(WEBSITE)
+
+  // 태그
+  tags            String[]
+
+  // 활동
+  lastOpenedAt    DateTime?
+  lastClickedAt   DateTime?
+  totalOpens      Int                 @default(0)
+  totalClicks     Int                 @default(0)
+
+  subscribedAt    DateTime            @default(now())
+  unsubscribedAt  DateTime?
+
+  // 관계
+  emailEvents     EmailEvent[]
+
+  @@unique([circleId, email])
+  @@index([email])
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+enum SubscriberSource {
+  WEBSITE
+  IMPORT
+  API
+  REFERRAL
+}
+
+model EmailCampaign {
+  id              String         @id @default(cuid())
+  circleId        String
+  circle          Circle         @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  postId          String?
+
+  // 콘텐츠
+  subject         String
+  previewText     String?
+  htmlContent     String         @db.Text
+  textContent     String?        @db.Text
+
+  // 대상
+  recipientType   RecipientType  @default(ALL)
+  segmentId       String?
+
+  // 상태
+  status          CampaignStatus @default(DRAFT)
+
+  // 일정
+  scheduledAt     DateTime?
+  sentAt          DateTime?
+
+  // 통계
+  stats           Json           @default("{}")
+
+  createdAt       DateTime       @default(now())
+
+  // 관계
+  emailEvents     EmailEvent[]
+
+  @@index([circleId])
+}
+
+enum RecipientType {
+  ALL
+  PAID_ONLY
+  FREE_ONLY
+  SEGMENT
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+}
+
+model EmailEvent {
+  id              String               @id @default(cuid())
+  campaignId      String
+  campaign        EmailCampaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  subscriberId    String
+  subscriber      NewsletterSubscriber @relation(fields: [subscriberId], references: [id])
+
+  type            EmailEventType
+
+  // 클릭 정보
+  linkUrl         String?
+
+  // 메타
+  userAgent       String?
+  ipAddress       String?
+
+  timestamp       DateTime             @default(now())
+
+  @@index([campaignId])
+  @@index([subscriberId])
+}
+
+enum EmailEventType {
+  DELIVERED
+  OPENED
+  CLICKED
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+}
+
+// ==================== 정산 ====================
+
+model Payout {
+  id              String        @id @default(cuid())
+  creatorId       String
+  creator         Creator       @relation(fields: [creatorId], references: [id])
+
+  // 금액
+  grossAmount     Int
+  platformFee     Int
+  processingFee   Int
+  netAmount       Int
+
+  currency        String        @default("KRW")
+
+  // 기간
+  periodStart     DateTime
+  periodEnd       DateTime
+
+  // 상세
+  breakdown       Json
+
+  // 상태
+  status          PayoutStatus  @default(PENDING)
+
+  // Stripe
+  stripePayoutId  String?
+
+  scheduledAt     DateTime
+  paidAt          DateTime?
+
+  createdAt       DateTime      @default(now())
+
+  // 관계
+  referralConversions ReferralConversion[]
+
+  @@index([creatorId])
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+// ==================== 팁 ====================
+
+model Tip {
+  id              String   @id @default(cuid())
+  fromUserId      String
+  fromUser        User     @relation(fields: [fromUserId], references: [id])
+  toCreatorId     String
+  toCreator       Creator  @relation(fields: [toCreatorId], references: [id])
+  circleId        String?
+  circle          Circle?  @relation(fields: [circleId], references: [id])
+
+  amount          Int
+  currency        String   @default("KRW")
+
+  message         String?  @db.Text
+  isAnonymous     Boolean  @default(false)
+
+  // 결제
+  paymentId       String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([toCreatorId])
+}
+
+// ==================== 알림 ====================
+
+model Notification {
+  id              String           @id @default(cuid())
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type            NotificationType
+  title           String
+  message         String
+  data            Json?
+
+  isRead          Boolean          @default(false)
+
+  createdAt       DateTime         @default(now())
+
+  @@index([userId, isRead])
+}
+
+enum NotificationType {
+  NEW_POST
+  NEW_COMMENT
+  NEW_LIKE
+  NEW_FOLLOWER
+  NEW_SUBSCRIBER
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYOUT_SENT
+  REFERRAL_SIGNUP
+  REFERRAL_CONVERSION
+  SYSTEM
+}
+
+// ==================== 라이브 세션 ====================
+
+model LiveSession {
+  id              String            @id @default(cuid())
+  circleId        String
+  hostId          String
+
+  title           String
+  description     String?           @db.Text
+
+  type            LiveSessionType
+
+  // 일정
+  scheduledAt     DateTime
+  duration        Int               // 분
+
+  // 상태
+  status          LiveSessionStatus @default(SCHEDULED)
+  startedAt       DateTime?
+  endedAt         DateTime?
+
+  // 접근
+  accessType      AccessType        @default(PAID)
+  requiredTierId  String?
+
+  // 참여
+  maxParticipants Int?
+  currentParticipants Int           @default(0)
+
+  // 녹화
+  recordingUrl    String?
+  recordingAvailable Boolean        @default(false)
+
+  createdAt       DateTime          @default(now())
+
+  @@index([circleId])
+}
+
+enum LiveSessionType {
+  AMA
+  WEBINAR
+  DISCUSSION
+  OFFICE_HOURS
+}
+
+enum LiveSessionStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
