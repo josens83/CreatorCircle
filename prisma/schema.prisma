@@ -1040,3 +1040,214 @@ enum LiveSessionStatus {
   ENDED
   CANCELLED
 }
+
+// ==================== 트랜잭션 & 결제 ====================
+
+model Transaction {
+  id                    String            @id @default(cuid())
+  userId                String
+  circleId              String?
+
+  // Stripe 정보
+  stripePaymentIntentId String?           @unique
+  stripeChargeId        String?
+
+  // 유형
+  type                  TransactionType
+
+  // 금액
+  amount                Int
+  currency              String            @default("KRW")
+  platformFee           Int?
+  stripeFee             Int?
+  creatorEarnings       Int?
+  refundedAmount        Int?
+
+  // 상태
+  status                TransactionStatus @default(PENDING)
+
+  // 메타데이터
+  metadata              Json?
+
+  // 타임스탬프
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  // 관계
+  refunds               Refund[]
+  disputes              Dispute[]
+
+  @@index([userId])
+  @@index([circleId])
+  @@index([stripePaymentIntentId])
+  @@index([status])
+}
+
+enum TransactionType {
+  SUBSCRIPTION
+  RENEWAL
+  PRODUCT
+  TIP
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIAL_REFUND
+  DISPUTED
+  CANCELED
+}
+
+model Refund {
+  id              String       @id @default(cuid())
+  transactionId   String
+  transaction     Transaction  @relation(fields: [transactionId], references: [id])
+
+  stripeRefundId  String?      @unique
+
+  amount          Int
+  reason          String?
+  status          RefundStatus @default(PENDING)
+
+  // 요청자
+  requestedBy     String?
+  approvedBy      String?
+
+  // 타임스탬프
+  requestedAt     DateTime     @default(now())
+  refundedAt      DateTime?
+
+  @@index([transactionId])
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+model Dispute {
+  id              String        @id @default(cuid())
+  transactionId   String
+  transaction     Transaction   @relation(fields: [transactionId], references: [id])
+
+  stripeDisputeId String?       @unique
+
+  amount          Int
+  reason          String?
+  status          DisputeStatus @default(OPEN)
+
+  // 증거
+  evidence_due_by DateTime?
+  evidence        Json?
+
+  // 타임스탬프
+  createdAt       DateTime      @default(now())
+  resolvedAt      DateTime?
+
+  @@index([transactionId])
+  @@index([status])
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  WON
+  LOST
+  CLOSED
+}
+
+model PaymentAttempt {
+  id                    String              @id @default(cuid())
+  stripeInvoiceId       String?
+  stripeSubscriptionId  String?
+
+  amount                Int
+  status                PaymentAttemptStatus
+  attemptNumber         Int                 @default(1)
+
+  failureReason         String?
+  failureCode           String?
+
+  attemptedAt           DateTime            @default(now())
+  nextAttemptAt         DateTime?
+
+  @@index([stripeSubscriptionId])
+}
+
+enum PaymentAttemptStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+// ==================== 감사 로그 ====================
+
+model AuditLog {
+  id              String         @id @default(cuid())
+  timestamp       DateTime       @default(now())
+
+  action          String
+  category        AuditCategory
+  severity        AuditSeverity
+
+  userId          String?
+  resourceType    String?
+  resourceId      String?
+
+  ip              String
+  userAgent       String
+
+  details         Json?
+  outcome         AuditOutcome
+  failureReason   String?
+
+  hash            String?
+
+  @@index([userId])
+  @@index([category])
+  @@index([timestamp])
+  @@index([action])
+}
+
+enum AuditCategory {
+  AUTH
+  USER
+  PAYMENT
+  CONTENT
+  CREATOR
+  ADMIN
+  SECURITY
+  SYSTEM
+}
+
+enum AuditSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
+// ==================== Webhook 처리 ====================
+
+model ProcessedWebhook {
+  eventId       String   @id
+  eventType     String
+  processedAt   DateTime @default(now())
+  status        String
+  error         String?
+
+  @@index([eventType])
+  @@index([processedAt])
+}
