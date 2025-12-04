@@ -1,0 +1,37 @@
+# =============================================================================
+# CreatorCircle Development Dockerfile
+# Hot reload enabled
+# =============================================================================
+
+FROM node:20-alpine
+
+# Install dependencies
+RUN apk add --no-cache libc6-compat openssl curl
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@8 --activate
+
+# Copy package files
+COPY package.json pnpm-lock.yaml* ./
+COPY prisma ./prisma/
+
+# Install all dependencies (including devDependencies)
+RUN pnpm install
+
+# Generate Prisma Client
+RUN pnpm db:generate
+
+# Copy source code
+COPY . .
+
+# Set environment
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Expose port
+EXPOSE 3000
+
+# Start development server
+CMD ["pnpm", "dev"]

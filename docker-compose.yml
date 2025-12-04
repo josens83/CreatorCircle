@@ -1,0 +1,118 @@
+# =============================================================================
+# CreatorCircle Docker Compose - Development
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Application
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: creatorcircle-app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://creatorcircle:creatorcircle@postgres:5432/creatorcircle
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-dev-secret-change-in-production}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - creatorcircle-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: creatorcircle-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=creatorcircle
+      - POSTGRES_PASSWORD=creatorcircle
+      - POSTGRES_DB=creatorcircle
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creatorcircle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - creatorcircle-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis (for caching and rate limiting)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: creatorcircle-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - creatorcircle-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Stripe CLI (for webhook testing)
+  # ---------------------------------------------------------------------------
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+    container_name: creatorcircle-stripe
+    command: listen --forward-to http://app:3000/api/webhooks/stripe
+    environment:
+      - STRIPE_API_KEY=${STRIPE_SECRET_KEY}
+    depends_on:
+      - app
+    networks:
+      - creatorcircle-network
+    profiles:
+      - stripe
+
+  # ---------------------------------------------------------------------------
+  # Mailhog (for email testing)
+  # ---------------------------------------------------------------------------
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: creatorcircle-mailhog
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Web UI
+    networks:
+      - creatorcircle-network
+    profiles:
+      - email
+
+networks:
+  creatorcircle-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
