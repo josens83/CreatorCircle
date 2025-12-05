@@ -1,138 +1,187 @@
-# CreatorCircle - 크리에이터 구독 커뮤니티 플랫폼
+# CreatorCircle
 
-知识星球(Knowledge Planet)과 小报童(Xiaobaotong)을 벤치마킹한 크리에이터 구독 커뮤니티 플랫폼입니다.
+**크리에이터 구독 커뮤니티 플랫폼** - 知识星球(Knowledge Planet)과 小报童(Xiaobaotong)을 벤치마킹한 엔터프라이즈급 플랫폼
 
-## 핵심 기능
+[![CI](https://github.com/josens83/CreatorCircle/actions/workflows/ci.yml/badge.svg)](https://github.com/josens83/CreatorCircle/actions/workflows/ci.yml)
+[![CD](https://github.com/josens83/CreatorCircle/actions/workflows/cd.yml/badge.svg)](https://github.com/josens83/CreatorCircle/actions/workflows/cd.yml)
 
-- **유료 커뮤니티**: 멤버십 티어로 프리미엄 콘텐츠 제공
-- **뉴스레터**: 이메일로 구독자에게 직접 전달
-- **디지털 상품**: 이북, 템플릿, 강의 판매
-- **제휴 시스템**: 60% 커미션으로 바이럴 성장
+## Overview
 
-## 수익 모델
+CreatorCircle는 크리에이터가 유료 구독 커뮤니티를 운영할 수 있는 플랫폼입니다. Netflix, Spotify, Stripe 수준의 프로덕션 품질을 목표로 설계되었습니다.
 
-- 플랫폼 수수료: 10% (업계 최저)
-- 크리에이터 수익: 90%
-- 팁 수수료: 5%
+### Key Features
 
-## 기술 스택
+- **유료 커뮤니티**: 멤버십 티어별 프리미엄 콘텐츠 제공
+- **Stripe Connect**: 크리에이터 자동 정산 (플랫폼 수수료 10%)
+- **실시간 분석**: 구독자, 수익, 콘텐츠 성과 대시보드
+- **보안**: OWASP 표준, 암호화, Rate Limiting
 
-### Frontend
-- Next.js 14 (App Router)
-- Tailwind CSS + shadcn/ui
-- Zustand + TanStack Query
-- TypeScript
+## Tech Stack
 
-### Backend
-- Next.js API Routes
-- Prisma ORM
-- PostgreSQL
+| Category | Technologies |
+|----------|-------------|
+| **Frontend** | Next.js 14, React 19, Tailwind CSS, shadcn/ui |
+| **Backend** | Next.js API Routes, Prisma, PostgreSQL |
+| **Payments** | Stripe Connect |
+| **Auth** | NextAuth.js, OAuth 2.0 |
+| **Testing** | Vitest, Playwright, k6 |
+| **CI/CD** | GitHub Actions, Docker |
+| **Monitoring** | Sentry, Prometheus |
 
-### Payments
-- Stripe (글로벌)
-- Stripe Connect (크리에이터 정산)
+## Quick Start
 
-### Authentication
-- NextAuth.js
-- Google/GitHub OAuth
+### Prerequisites
 
-## 시작하기
+- Node.js 20+
+- pnpm 8+
+- PostgreSQL 15+
+- Docker (optional)
 
-### 필수 요구사항
-- Node.js 18+
-- PostgreSQL 데이터베이스
-- Stripe 계정
-
-### 설치
+### Installation
 
 ```bash
-# 의존성 설치
-npm install
+# Clone repository
+git clone https://github.com/josens83/CreatorCircle.git
+cd CreatorCircle
 
-# 환경 변수 설정
-cp .env.example .env
-# .env 파일을 편집하여 필요한 값 입력
+# Install dependencies
+pnpm install
 
-# Prisma 클라이언트 생성
-npm run db:generate
+# Setup environment
+cp .env.example .env.local
+# Edit .env.local with your values
 
-# 데이터베이스 마이그레이션
-npm run db:push
+# Setup database
+pnpm db:generate
+pnpm db:push
 
-# 개발 서버 시작
-npm run dev
+# Start development server
+pnpm dev
 ```
 
-### 환경 변수
+### Using Docker
 
-```env
-# Database
-DATABASE_URL="postgresql://..."
+```bash
+# Start all services
+docker-compose up -d
 
-# NextAuth.js
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-secret"
+# View logs
+docker-compose logs -f app
 
-# OAuth
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
-
-# Stripe
-STRIPE_PUBLIC_KEY=""
-STRIPE_SECRET_KEY=""
-STRIPE_WEBHOOK_SECRET=""
+# Stop services
+docker-compose down
 ```
 
-## 프로젝트 구조
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [API Documentation](docs/API.md) | REST API 엔드포인트 가이드 |
+| [Architecture](docs/ARCHITECTURE.md) | 시스템 아키텍처 및 설계 결정 |
+| [Development Guide](docs/DEVELOPMENT.md) | 개발 환경 설정 및 코드 패턴 |
+| [Deployment Guide](docs/DEPLOYMENT.md) | 프로덕션 배포 가이드 |
+
+## Project Structure
 
 ```
 src/
 ├── app/                    # Next.js App Router
-│   ├── (auth)/            # 인증 관련 페이지
-│   ├── (main)/            # 메인 페이지들
-│   ├── api/               # API 라우트
-│   └── creator/           # 크리에이터 대시보드
-├── components/
-│   ├── ui/                # shadcn/ui 컴포넌트
-│   ├── layout/            # 레이아웃 컴포넌트
-│   └── ...                # 기능별 컴포넌트
-├── lib/                   # 유틸리티 함수
-├── hooks/                 # React 훅
-├── stores/                # Zustand 스토어
-└── types/                 # TypeScript 타입
+│   ├── (auth)/            # Authentication pages
+│   ├── (dashboard)/       # Dashboard pages
+│   ├── api/               # API routes
+│   └── layout.tsx         # Root layout
+├── components/            # React components
+│   ├── ui/               # shadcn/ui components
+│   └── features/         # Feature components
+├── lib/                   # Core libraries
+│   ├── errors/           # Error handling
+│   ├── monitoring/       # Logging, metrics
+│   ├── payments/         # Stripe integration
+│   ├── performance/      # Optimization utilities
+│   ├── resilience/       # Circuit breaker, retry
+│   └── security/         # Auth, rate limiting
+└── tests/                # Test suites
 ```
 
-## 주요 페이지
+## Enterprise Features
 
-- `/` - 홈페이지
-- `/explore` - 서클 탐색
-- `/circle/[slug]` - 서클 상세
-- `/login` - 로그인
-- `/signup` - 회원가입
-- `/become-creator` - 크리에이터 등록
-- `/creator/dashboard` - 크리에이터 대시보드
+### Resilience
 
-## API 엔드포인트
+- **Circuit Breaker**: Netflix Hystrix 패턴
+- **Retry with Backoff**: 지수 백오프 + 지터
+- **Graceful Degradation**: SWR 캐싱 폴백
 
-### 인증
-- `POST /api/auth/signup` - 회원가입
-- `POST /api/auth/[...nextauth]` - NextAuth.js
+### Security
 
-### 서클
-- `GET /api/circles` - 서클 목록
-- `POST /api/circles` - 서클 생성
-- `GET /api/circles/[slug]` - 서클 상세
+- **Rate Limiting**: Sliding Window 알고리즘
+- **Input Validation**: Zod 스키마 검증
+- **Security Headers**: CSP, HSTS, X-Frame-Options
+- **Audit Logging**: SHA-256 무결성 검증
 
-### 포스트
-- `GET /api/posts` - 포스트 목록
-- `POST /api/posts` - 포스트 생성
+### Observability
 
-### 크리에이터
-- `POST /api/creators/onboard` - 크리에이터 등록
+- **Structured Logging**: JSON 포맷, 컨텍스트 추적
+- **Prometheus Metrics**: HTTP, DB, 비즈니스 메트릭
+- **Health Checks**: Kubernetes 호환 프로브
 
-### Webhooks
-- `POST /api/webhooks/stripe` - Stripe 웹훅
+### Performance
 
-## 라이선스
+- **React Server Components**: 서버 사이드 데이터 페칭
+- **SWR Caching**: Stale-While-Revalidate 패턴
+- **Image Optimization**: WebP/AVIF, Lazy Loading
+- **Database Optimization**: 커서 페이지네이션, 쿼리 모니터링
 
-MIT License
+## Scripts
+
+```bash
+# Development
+pnpm dev              # Start dev server
+pnpm build            # Build for production
+pnpm start            # Start production server
+
+# Database
+pnpm db:generate      # Generate Prisma client
+pnpm db:push          # Push schema changes
+pnpm db:migrate       # Run migrations
+pnpm db:studio        # Open Prisma Studio
+
+# Testing
+pnpm test             # Run unit tests (watch)
+pnpm test:run         # Run unit tests (once)
+pnpm test:coverage    # Generate coverage report
+pnpm test:e2e         # Run E2E tests
+pnpm test:load        # Run load tests
+
+# Quality
+pnpm lint             # Run ESLint
+pnpm typecheck        # Run TypeScript check
+```
+
+## Environment Variables
+
+See [`.env.example`](.env.example) for all available options.
+
+### Required
+
+```bash
+DATABASE_URL=postgresql://...
+NEXTAUTH_SECRET=...
+STRIPE_SECRET_KEY=...
+STRIPE_WEBHOOK_SECRET=...
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing`)
+3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing`)
+5. Open a Pull Request
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+Built with ❤️ for creators worldwide
